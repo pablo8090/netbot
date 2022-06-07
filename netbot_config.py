@@ -20,7 +20,7 @@ ATTACK_BURST_SECONDS = "0"
 	# HOLD - Wait for command.
 	# UPDATE - Update Client.
 
-ATTACK_CODE = "HALT" # Choose any one Flag from above
+ATTACK_CODE = "HOLD" # Choose any one Flag from above
 
 #################################################################################
 
