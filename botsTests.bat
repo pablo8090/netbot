@@ -1,0 +1,1 @@
+FOR /L %%x IN (1,1,5) DO start cmd /c python netbot_client.py

